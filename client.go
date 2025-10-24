@@ -14,12 +14,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -163,9 +165,9 @@ type User struct {
 	Username, Password string
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Client methods
-//___________________________________
+// ___________________________________
 
 // SetHostURL method sets the Host URL in the client instance. It will be used with a request
 // raised from this client with a relative URL
@@ -1170,6 +1172,76 @@ func (c *Client) GetClient() *http.Client {
 	return c.httpClient
 }
 
+// cloneURLValues is a helper function to deep copy url.Values.
+func cloneURLValues(v url.Values) url.Values {
+	if v == nil {
+		return nil
+	}
+	return url.Values(http.Header(v).Clone())
+}
+
+func cloneCookie(c *http.Cookie) *http.Cookie {
+	return &http.Cookie{
+		Name:       c.Name,
+		Value:      c.Value,
+		Quoted:     c.Quoted,
+		Path:       c.Path,
+		Domain:     c.Domain,
+		Expires:    c.Expires,
+		RawExpires: c.RawExpires,
+		MaxAge:     c.MaxAge,
+		Secure:     c.Secure,
+		HttpOnly:   c.HttpOnly,
+		SameSite:   c.SameSite,
+		Raw:        c.Raw,
+		Unparsed:   c.Unparsed,
+	}
+}
+
+// DeepClone returns a deep copy of the original client at best effort.
+//
+// NOTE: Use with care:
+//   - Interface values are not deeply cloned. Thus, both the original and the
+//     clone will use the same value.
+//   - This function is not safe for concurrent use. You should only use this method
+//     when you are sure that any other goroutine is not using the client.
+func (c *Client) DeepClone() *Client {
+	cc := c.Clone()
+
+	cc.QueryParam = cloneURLValues(c.QueryParam)
+	cc.FormData = cloneURLValues(c.FormData)
+	cc.PathParams = maps.Clone(c.PathParams)
+	cc.RawPathParams = maps.Clone(c.RawPathParams)
+	cc.Header = c.Header.Clone()
+	if c.UserInfo != nil {
+		u := *c.UserInfo
+		cc.UserInfo = &u
+	}
+
+	if c.proxyURL != nil {
+		cc.proxyURL, _ = url.Parse(c.proxyURL.String())
+	}
+	// clone cookies
+	if l := len(c.Cookies); l > 0 {
+		cc.Cookies = make([]*http.Cookie, l)
+		for i, cookie := range c.Cookies {
+			cc.Cookies[i] = cloneCookie(cookie)
+		}
+	}
+	cc.RetryConditions = slices.Clone(c.RetryConditions)
+	cc.RetryHooks = slices.Clone(c.RetryHooks)
+
+	cc.beforeRequest = slices.Clone(c.beforeRequest)
+	cc.udBeforeRequest = slices.Clone(c.udBeforeRequest)
+	cc.successHooks = slices.Clone(c.successHooks)
+	cc.afterResponse = slices.Clone(c.afterResponse)
+	cc.errorHooks = slices.Clone(c.errorHooks)
+	cc.invalidHooks = slices.Clone(c.invalidHooks)
+	cc.panicHooks = slices.Clone(c.panicHooks)
+
+	return cc
+}
+
 // Clone returns a clone of the original client.
 //
 // NOTE: Use with care:
@@ -1418,9 +1490,9 @@ func (c *Client) onInvalidHooks(req *Request, err error) {
 	}
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // File struct and its methods
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 // File struct represents file information for multipart request
 type File struct {
@@ -1434,9 +1506,9 @@ func (f *File) String() string {
 	return fmt.Sprintf("ParamName: %v; FileName: %v", f.ParamName, f.Name)
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // MultipartField struct
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 // MultipartField struct represents the custom data part for a multipart request
 type MultipartField struct {
