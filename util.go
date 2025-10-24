@@ -21,9 +21,9 @@ import (
 	"strings"
 )
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Logger interface
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 // Logger interface is to abstract the logging from Resty. Gives control to
 // the Resty users, choice of the logger.
@@ -64,9 +64,9 @@ func (l *logger) output(format string, v ...interface{}) {
 	l.l.Printf(format, v...)
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Rate Limiter interface
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 type RateLimiter interface {
 	Allow() bool
@@ -74,9 +74,9 @@ type RateLimiter interface {
 
 var ErrRateLimitExceeded = errors.New("rate limit exceeded")
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Package Helper methods
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 // IsStringEmpty method tells whether given string is empty or not
 func IsStringEmpty(str string) bool {
@@ -124,9 +124,9 @@ func Unmarshalc(c *Client, ct string, b []byte, d interface{}) (err error) {
 	return
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // RequestLog and ResponseLog type
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 // RequestLog struct is used to collected information from resty request
 // instance for debug logging. It sent to request log callback before resty
@@ -284,25 +284,22 @@ func functionName(i interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
+// MaxBufferSize is the maximum size of buffer to be kept in pool.
+// Buffers larger than this size will not be put back to pool.
+// Defaults to 10 MiB.
+// Users can change this value as per requirement.
+var MaxBufferSize = 10 * 1024 * 1024 // 10 MiB
+
 func acquireBuffer() *bytes.Buffer {
 	buf := bufPool.Get().(*bytes.Buffer)
-	if buf.Len() == 0 {
-		buf.Reset()
-		return buf
-	}
-	bufPool.Put(buf)
-	return new(bytes.Buffer)
+	buf.Reset()
+	return buf
 }
 
 func releaseBuffer(buf *bytes.Buffer) {
-	if buf != nil {
-		buf.Reset()
-		bufPool.Put(buf)
-	}
-}
-
-func backToBufPool(buf *bytes.Buffer) {
-	if buf != nil {
+	// Put back the buffer to pool only if its capacity is within limit.
+	// See also https://github.com/bytedance/sonic/issues/614
+	if buf != nil && buf.Cap() <= MaxBufferSize {
 		bufPool.Put(buf)
 	}
 }
