@@ -454,7 +454,6 @@ func (c *Client) R() *Request {
 		AuthScheme:    c.AuthScheme,
 
 		client:              c,
-		multipartFiles:      []*File{},
 		multipartFields:     []*MultipartField{},
 		jsonEscapeHTML:      c.jsonEscapeHTML,
 		log:                 c.log,
@@ -1315,6 +1314,12 @@ func (c *Client) execute(req *Request) (*Response, error) {
 		RawResponse: resp,
 	}
 
+	if req.multipartErrChan != nil {
+		if err := <-req.multipartErrChan; err != nil {
+			return nil, err
+		}
+	}
+
 	if err != nil || req.notParseResponse || c.notParseResponse {
 		response.setReceivedAt()
 		if logErr := responseLogger(c, response); logErr != nil {
@@ -1486,24 +1491,14 @@ func (c *Client) onInvalidHooks(req *Request, err error) {
 type File struct {
 	Name      string
 	ParamName string
+	// Path and Reader are mutually exclusive
+	Path string
 	io.Reader
 }
 
 // String method returns the string value of current file details
 func (f *File) String() string {
 	return fmt.Sprintf("ParamName: %v; FileName: %v", f.ParamName, f.Name)
-}
-
-// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-// MultipartField struct
-// _______________________________________________________________________
-
-// MultipartField struct represents the custom data part for a multipart request
-type MultipartField struct {
-	Param       string
-	FileName    string
-	ContentType string
-	io.Reader
 }
 
 func createClient(hc *http.Client) *Client {

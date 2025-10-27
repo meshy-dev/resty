@@ -2131,33 +2131,12 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 
 	debugBodySizeLimit := int64(512)
 
-	// upload an image with more than 512 bytes
-	output := bytes.NewBufferString("")
-	resp, err := New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
-		SetFile("file", filepath.Join(getTestDataPath(), "test-img.png")).
-		SetHeader("Content-Type", "image/png").
-		Post(ts.URL + "/upload")
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, true, strings.Contains(output.String(), "REQUEST TOO LARGE"))
-
-	// upload a text file with no more than 512 bytes
-	output = bytes.NewBufferString("")
-	resp, err = New().outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
-		SetDebug(true).
-		SetFile("file", filepath.Join(getTestDataPath(), "text-file.txt")).
-		SetHeader("Content-Type", "text/plain").
-		Post(ts.URL + "/upload")
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, true, strings.Contains(output.String(), " THIS IS TEXT FILE FOR MULTIPART UPLOAD TEST "))
-
 	formTs := createFormPostServer(t)
 	defer formTs.Close()
 
 	// post form with more than 512 bytes data
-	output = bytes.NewBufferString("")
-	resp, err = New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
+	output := bytes.NewBufferString("")
+	resp, err := New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
 		SetFormData(map[string]string{
 			"first_name": "Alex",
 			"last_name":  strings.Repeat("C", int(debugBodySizeLimit)),

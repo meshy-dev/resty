@@ -422,44 +422,10 @@ func parseResponseBody(c *Client, res *Response) (err error) {
 	return
 }
 
-func handleMultipart(c *Client, r *Request) error {
-	r.bodyBuf = acquireBuffer()
-	w := multipart.NewWriter(r.bodyBuf)
-
-	// Set boundary if not set by user
-	if r.multipartBoundary != "" {
-		if err := w.SetBoundary(r.multipartBoundary); err != nil {
-			return err
-		}
-	}
-
-	for k, v := range c.FormData {
-		for _, iv := range v {
-			if err := w.WriteField(k, iv); err != nil {
-				return err
-			}
-		}
-	}
-
-	for k, v := range r.FormData {
-		for _, iv := range v {
-			if strings.HasPrefix(k, "@") { // file
-				if err := addFile(w, k[1:], iv); err != nil {
-					return err
-				}
-			} else { // form value
-				if err := w.WriteField(k, iv); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// #21 - adding io.Reader support
-	for _, f := range r.multipartFiles {
-		if err := addFileReader(w, f); err != nil {
-			return err
-		}
+func streamMultipartData(r *Request, w *multipart.Writer) error {
+	err := r.writeFormDataToMultipartWriter(w)
+	if err != nil {
+		return err
 	}
 
 	// GitHub #130 adding multipart field support with content type
@@ -468,9 +434,61 @@ func handleMultipart(c *Client, r *Request) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func handleMultipart(c *Client, r *Request) error {
+	for k, v := range c.FormData {
+		if _, ok := r.FormData[k]; ok {
+			continue
+		}
+		r.FormData[k] = v[:]
+	}
+
+	if len(r.multipartFields) == 0 {
+		r.bodyBuf = acquireBuffer()
+		w := multipart.NewWriter(r.bodyBuf)
+
+		// Set boundary if not set by user
+		if r.multipartBoundary != "" {
+			if err := w.SetBoundary(r.multipartBoundary); err != nil {
+				return err
+			}
+		}
+
+		if err := r.writeFormDataToMultipartWriter(w); err != nil {
+			return err
+		}
+
+		r.Header.Set(hdrContentTypeKey, w.FormDataContentType())
+		_ = w.Close()
+		return nil
+	}
+
+	pr, pw := io.Pipe()
+	w := multipart.NewWriter(pw)
+	r.Body = pr
+	r.multipartErrChan = make(chan error, 1)
+
+	// Set boundary if not set by user
+	if r.multipartBoundary != "" {
+		if err := w.SetBoundary(r.multipartBoundary); err != nil {
+			return err
+		}
+	}
+
+	go func() {
+		err := streamMultipartData(r, w)
+		if err != nil {
+			r.multipartErrChan <- err
+		}
+		close(r.multipartErrChan)
+		_ = w.Close()
+		_ = pw.Close()
+	}()
 
 	r.Header.Set(hdrContentTypeKey, w.FormDataContentType())
-	return w.Close()
+	return nil
 }
 
 func handleFormData(c *Client, r *Request) {

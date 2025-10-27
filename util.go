@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
@@ -193,14 +192,32 @@ func createMultipartHeader(param, fileName, contentType string) textproto.MIMEHe
 	return hdr
 }
 
+func closeFieldReaders(fields []*MultipartField) {
+	for _, field := range fields {
+		closeq(field.Reader)
+	}
+}
+
 func addMultipartFormField(w *multipart.Writer, mf *MultipartField) error {
-	partWriter, err := w.CreatePart(createMultipartHeader(mf.Param, mf.FileName, mf.ContentType))
-	if err != nil {
+	if len(mf.FilePath) > 0 && mf.Reader == nil {
+		fr, err := os.Open(mf.FilePath)
+		if err != nil {
+			return err
+		}
+		mf.Reader = fr
+	}
+
+	if len(mf.ContentType) > 0 {
+		partWriter, err := w.CreatePart(createMultipartHeader(mf.Param, mf.FileName, mf.ContentType))
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(partWriter, mf.Reader)
 		return err
 	}
 
-	_, err = io.Copy(partWriter, mf.Reader)
-	return err
+	return writeMultipartFormFile(w, mf.Param, mf.FileName, mf.Reader)
 }
 
 func writeMultipartFormFile(w *multipart.Writer, fieldName, fileName string, r io.Reader) error {
@@ -222,19 +239,6 @@ func writeMultipartFormFile(w *multipart.Writer, fieldName, fileName string, r i
 
 	_, err = io.Copy(partWriter, r)
 	return err
-}
-
-func addFile(w *multipart.Writer, fieldName, path string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer closeq(file)
-	return writeMultipartFormFile(w, fieldName, filepath.Base(path), file)
-}
-
-func addFileReader(w *multipart.Writer, f *File) error {
-	return writeMultipartFormFile(w, f.ParamName, f.Name, f.Reader)
 }
 
 func getPointer(v interface{}) interface{} {

@@ -142,9 +142,6 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 					return err
 				}
 			}
-			if err := resetFileReaders(resp.Request.multipartFiles); err != nil {
-				return err
-			}
 			if err := resetFieldReaders(resp.Request.multipartFields); err != nil {
 				return err
 			}

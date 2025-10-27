@@ -11,9 +11,11 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -67,8 +69,8 @@ type Request struct {
 	clientTrace         *clientTrace
 	log                 Logger
 	multipartBoundary   string
-	multipartFiles      []*File
 	multipartFields     []*MultipartField
+	multipartErrChan    chan error
 	retryConditions     []RetryConditionFunc
 	responseBodyLimit   int
 	generateCurlOnDebug bool
@@ -405,8 +407,11 @@ func (r *Request) SetError(err interface{}) *Request {
 //	client.R().
 //		SetFile("my_file", "/Users/jeeva/Gas Bill - Sep.pdf")
 func (r *Request) SetFile(param, filePath string) *Request {
-	r.isMultiPart = true
-	r.FormData.Set("@"+param, filePath)
+	r.SetMultipartFields(&MultipartField{
+		Param:    param,
+		FileName: filepath.Base(filePath),
+		FilePath: filePath,
+	})
 	return r
 }
 
@@ -419,9 +424,8 @@ func (r *Request) SetFile(param, filePath string) *Request {
 //				"my_file3": "/Users/jeeva/Water Bill - Sep.pdf",
 //			})
 func (r *Request) SetFiles(files map[string]string) *Request {
-	r.isMultiPart = true
 	for f, fp := range files {
-		r.FormData.Set("@"+f, fp)
+		r.SetFile(f, fp)
 	}
 	return r
 }
@@ -432,11 +436,10 @@ func (r *Request) SetFiles(files map[string]string) *Request {
 //		SetFileReader("profile_img", "my-profile-img.png", bytes.NewReader(profileImgBytes)).
 //		SetFileReader("notes", "user-notes.txt", bytes.NewReader(notesBytes))
 func (r *Request) SetFileReader(param, fileName string, reader io.Reader) *Request {
-	r.isMultiPart = true
-	r.multipartFiles = append(r.multipartFiles, &File{
-		Name:      fileName,
-		ParamName: param,
-		Reader:    reader,
+	r.SetMultipartFields(&MultipartField{
+		Param:    param,
+		FileName: fileName,
+		Reader:   reader,
 	})
 	return r
 }
@@ -445,16 +448,14 @@ func (r *Request) SetFileReader(param, fileName string, reader io.Reader) *Reque
 // as `multipart:form-data`
 func (r *Request) SetMultipartFormData(data map[string]string) *Request {
 	for k, v := range data {
-		r = r.SetMultipartField(k, "", "", strings.NewReader(v))
+		r.SetMultipartField(k, "", "", strings.NewReader(v))
 	}
-
 	return r
 }
 
 // SetMultipartField method sets custom data with Content-Type using [io.Reader] for multipart upload.
 func (r *Request) SetMultipartField(param, fileName, contentType string, reader io.Reader) *Request {
-	r.isMultiPart = true
-	r.multipartFields = append(r.multipartFields, &MultipartField{
+	r.SetMultipartFields(&MultipartField{
 		Param:       param,
 		FileName:    fileName,
 		ContentType: contentType,
@@ -1020,6 +1021,7 @@ func (r *Request) Execute(method, url string) (*Response, error) {
 		resp, err = r.client.execute(r)
 		r.client.onErrorHooks(r, resp, unwrapNoRetryErr(err))
 		releaseBuffer(r.bodyBuf)
+		closeFieldReaders(r.multipartFields)
 		return resp, unwrapNoRetryErr(err)
 	}
 
@@ -1049,6 +1051,7 @@ func (r *Request) Execute(method, url string) (*Response, error) {
 	}
 
 	r.client.onErrorHooks(r, resp, unwrapNoRetryErr(err))
+	closeFieldReaders(r.multipartFields)
 	releaseBuffer(r.bodyBuf)
 	return resp, unwrapNoRetryErr(err)
 }
@@ -1150,6 +1153,17 @@ func (r *Request) initValuesMap() {
 	if r.values == nil {
 		r.values = make(map[string]interface{})
 	}
+}
+
+func (r *Request) writeFormDataToMultipartWriter(w *multipart.Writer) error {
+	for k, v := range r.FormData {
+		for _, iv := range v {
+			if err := w.WriteField(k, iv); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 var noescapeJSONMarshal = func(v interface{}) (*bytes.Buffer, error) {
