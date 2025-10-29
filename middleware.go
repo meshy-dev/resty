@@ -422,21 +422,6 @@ func parseResponseBody(c *Client, res *Response) (err error) {
 	return
 }
 
-func streamMultipartData(r *Request, w *multipart.Writer) error {
-	err := r.writeFormDataToMultipartWriter(w)
-	if err != nil {
-		return err
-	}
-
-	// GitHub #130 adding multipart field support with content type
-	for _, mf := range r.multipartFields {
-		if err := addMultipartFormField(w, mf); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func handleMultipart(c *Client, r *Request) error {
 	for k, v := range c.FormData {
 		if _, ok := r.FormData[k]; ok {
@@ -445,7 +430,7 @@ func handleMultipart(c *Client, r *Request) error {
 		r.FormData[k] = v[:]
 	}
 
-	if len(r.multipartFields) == 0 {
+	if r.disableStreamUpload || len(r.multipartFields) == 0 {
 		r.bodyBuf = acquireBuffer()
 		w := multipart.NewWriter(r.bodyBuf)
 
@@ -456,7 +441,8 @@ func handleMultipart(c *Client, r *Request) error {
 			}
 		}
 
-		if err := r.writeFormDataToMultipartWriter(w); err != nil {
+		err := r.writeMultipartFields(w)
+		if err != nil {
 			return err
 		}
 
@@ -478,7 +464,7 @@ func handleMultipart(c *Client, r *Request) error {
 	}
 
 	go func() {
-		err := streamMultipartData(r, w)
+		err := r.writeMultipartFields(w)
 		if err != nil {
 			r.multipartErrChan <- err
 		}

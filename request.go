@@ -56,6 +56,7 @@ type Request struct {
 	isMultiPart         bool
 	isFormData          bool
 	isSaveResponse      bool
+	disableStreamUpload bool
 	notParseResponse    bool
 	jsonEscapeHTML      bool
 	trace               bool
@@ -495,6 +496,12 @@ func (r *Request) SetMultipartFields(fields ...*MultipartField) *Request {
 // Typically, the `mime/multipart` package generates a random multipart boundary if not provided.
 func (r *Request) SetMultipartBoundary(boundary string) *Request {
 	r.multipartBoundary = boundary
+	return r
+}
+
+// SetDisableMultiPartStreamUpload method disables the multipart stream upload for the request.
+func (r *Request) SetDisableMultiPartStreamUpload(d bool) *Request {
+	r.disableStreamUpload = d
 	return r
 }
 
@@ -1155,12 +1162,19 @@ func (r *Request) initValuesMap() {
 	}
 }
 
-func (r *Request) writeFormDataToMultipartWriter(w *multipart.Writer) error {
+func (r *Request) writeMultipartFields(w *multipart.Writer) error {
 	for k, v := range r.FormData {
 		for _, iv := range v {
 			if err := w.WriteField(k, iv); err != nil {
 				return err
 			}
+		}
+	}
+
+	// GitHub #130 adding multipart field support with content type
+	for _, mf := range r.multipartFields {
+		if err := addMultipartFormField(w, mf); err != nil {
+			return err
 		}
 	}
 	return nil
