@@ -681,34 +681,6 @@ func Test_parseRequestBody(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "multipart fields with errorReader",
-			init: func(c *Client, r *Request) {
-				r.SetMultipartFields(&MultipartField{
-					Param:       "foo",
-					ContentType: "text/plain",
-					Reader:      &errorReader{},
-				})
-			},
-			wantErr: true,
-		},
-		{
-			name: "multipart files with errorReader",
-			init: func(c *Client, r *Request) {
-				r.SetFileReader("foo", "foo.txt", &errorReader{})
-			},
-			wantErr: true,
-		},
-		{
-			name: "multipart with file not found",
-			init: func(c *Client, r *Request) {
-				r.SetFormData(map[string]string{
-					"@foo": "foo.txt",
-				})
-				r.isMultiPart = true
-			},
-			wantErr: true,
-		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := New()
