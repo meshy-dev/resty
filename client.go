@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"maps"
 	"math"
@@ -1501,24 +1500,6 @@ func (c *Client) onInvalidHooks(req *Request, err error) {
 	for _, h := range c.invalidHooks {
 		h(req, err)
 	}
-}
-
-// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-// File struct and its methods
-// _______________________________________________________________________
-
-// File struct represents file information for multipart request
-type File struct {
-	Name      string
-	ParamName string
-	// Path and Reader are mutually exclusive
-	Path string
-	io.Reader
-}
-
-// String method returns the string value of current file details
-func (f *File) String() string {
-	return fmt.Sprintf("ParamName: %v; FileName: %v", f.ParamName, f.Name)
 }
 
 func createClient(hc *http.Client) *Client {

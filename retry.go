@@ -245,18 +245,6 @@ func newRnd() *rand.Rand {
 	return rand.New(src)
 }
 
-func resetFileReaders(files []*File) error {
-	for _, f := range files {
-		if rs, ok := f.Reader.(io.ReadSeeker); ok {
-			if _, err := rs.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func resetFieldReaders(fields []*MultipartField) error {
 	for _, f := range fields {
 		if rs, ok := f.Reader.(io.ReadSeeker); ok {

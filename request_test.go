@@ -939,14 +939,6 @@ func TestMultiPartIoReaderFiles(t *testing.T) {
 	profileImgBytes, _ := os.ReadFile(filepath.Join(basePath, "test-img.png"))
 	notesBytes, _ := os.ReadFile(filepath.Join(basePath, "text-file.txt"))
 
-	// Just info values
-	file := File{
-		Name:      "test_file_name.jpg",
-		ParamName: "test_param",
-		Reader:    bytes.NewBuffer([]byte("test bytes")),
-	}
-	t.Logf("File Info: %v", file.String())
-
 	resp, err := dclr().
 		SetFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M"}).
 		SetFileReader("profile_img", "test-img.png", bytes.NewReader(profileImgBytes)).
