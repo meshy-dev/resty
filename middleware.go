@@ -254,21 +254,6 @@ func createHTTPRequest(c *Client, r *Request) (err error) {
 		r.RawRequest = r.RawRequest.WithContext(r.ctx)
 	}
 
-	// assign get body func for the underlying raw request instance
-	if r.RawRequest.GetBody == nil {
-		bodyCopy, err := getBodyCopy(r)
-		if err != nil {
-			return err
-		}
-		if bodyCopy != nil {
-			buf := bodyCopy.Bytes()
-			r.RawRequest.GetBody = func() (io.ReadCloser, error) {
-				b := bytes.NewReader(buf)
-				return io.NopCloser(b), nil
-			}
-		}
-	}
-
 	return
 }
 
