@@ -5,7 +5,6 @@
 package resty
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -218,9 +217,7 @@ func createHTTPRequest(c *Client, r *Request) (err error) {
 			r.RawRequest, err = http.NewRequest(r.Method, r.URL, nil)
 		}
 	} else {
-		// fix data race: must deep copy.
-		bodyBuf := bytes.NewBuffer(append([]byte{}, r.bodyBuf.Bytes()...))
-		r.RawRequest, err = http.NewRequest(r.Method, r.URL, bodyBuf)
+		r.RawRequest, err = http.NewRequest(r.Method, r.URL, r.bodyBuf)
 	}
 
 	if err != nil {
@@ -546,33 +543,4 @@ func saveResponseIntoFile(c *Client, res *Response) error {
 	}
 
 	return nil
-}
-
-func getBodyCopy(r *Request) (*bytes.Buffer, error) {
-	// If r.bodyBuf present, return the copy
-	if r.bodyBuf != nil {
-		bodyCopy := acquireBuffer()
-		if _, err := io.Copy(bodyCopy, bytes.NewReader(r.bodyBuf.Bytes())); err != nil {
-			// cannot use io.Copy(bodyCopy, r.bodyBuf) because io.Copy reset r.bodyBuf
-			return nil, err
-		}
-		return bodyCopy, nil
-	}
-
-	// Maybe body is `io.Reader`.
-	// Note: Resty user have to watchout for large body size of `io.Reader`
-	if r.RawRequest.Body != nil {
-		b, err := io.ReadAll(r.RawRequest.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		// Restore the Body
-		closeq(r.RawRequest.Body)
-		r.RawRequest.Body = io.NopCloser(bytes.NewBuffer(b))
-
-		// Return the Body bytes
-		return bytes.NewBuffer(b), nil
-	}
-	return nil, nil
 }
