@@ -15,16 +15,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 )
 
 const debugRequestLogKey = "__restyDebugRequestLog"
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Request Middleware(s)
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 func parseRequestURL(c *Client, r *Request) error {
 	if l := len(c.PathParams) + len(c.RawPathParams) + len(r.PathParams) + len(r.RawPathParams); l > 0 {
@@ -77,7 +76,7 @@ func parseRequestURL(c *Client, r *Request) error {
 					// check for the replacement
 					key := r.URL[curr+1 : next]
 					value, ok := params[key]
-					/// keep the original string if the replacement not found
+					// / keep the original string if the replacement not found
 					if !ok {
 						value = r.URL[curr : next+1]
 					}
@@ -208,16 +207,6 @@ func parseRequestBody(c *Client, r *Request) error {
 			}
 		}
 	}
-
-	// by default resty won't set content length, you can if you want to :)
-	if c.setContentLength || r.setContentLength {
-		if r.bodyBuf == nil {
-			r.Header.Set(hdrContentLengthKey, "0")
-		} else {
-			r.Header.Set(hdrContentLengthKey, strconv.Itoa(r.bodyBuf.Len()))
-		}
-	}
-
 	return nil
 }
 
@@ -225,8 +214,6 @@ func createHTTPRequest(c *Client, r *Request) (err error) {
 	if r.bodyBuf == nil {
 		if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
 			r.RawRequest, err = http.NewRequest(r.Method, r.URL, reader)
-		} else if c.setContentLength || r.setContentLength {
-			r.RawRequest, err = http.NewRequest(r.Method, r.URL, http.NoBody)
 		} else {
 			r.RawRequest, err = http.NewRequest(r.Method, r.URL, nil)
 		}
@@ -365,9 +352,9 @@ func requestLogger(c *Client, r *Request) error {
 	return nil
 }
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Response Middleware(s)
-//_______________________________________________________________________
+// _______________________________________________________________________
 
 func responseLogger(c *Client, res *Response) error {
 	if res.Request.Debug {
@@ -514,16 +501,7 @@ func handleRequestBody(c *Client, r *Request) error {
 
 	switch body := r.Body.(type) {
 	case io.Reader:
-		if c.setContentLength || r.setContentLength { // keep backward compatibility
-			r.bodyBuf = acquireBuffer()
-			if _, err := r.bodyBuf.ReadFrom(body); err != nil {
-				return err
-			}
-			r.Body = nil
-		} else {
-			// Otherwise buffer less processing for `io.Reader`, sounds good.
-			return nil
-		}
+		return nil
 	case []byte:
 		bodyBytes = body
 	case string:

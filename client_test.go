@@ -433,8 +433,6 @@ func TestClientSetCookieJar(t *testing.T) {
 
 func TestClientOptions(t *testing.T) {
 	client := dc()
-	client.SetContentLength(true)
-	assertEqual(t, client.setContentLength, true)
 
 	client.SetHostURL("http://httpbin.org")
 	assertEqual(t, "http://httpbin.org", client.HostURL)
@@ -523,7 +521,6 @@ func TestClientOptions(t *testing.T) {
 	client.SetRedirectPolicy(FlexibleRedirectPolicy(10), func(req *http.Request, via []*http.Request) error {
 		return errors.New("sample test redirect")
 	})
-	client.SetContentLength(true)
 
 	client.SetDebug(true)
 	assertEqual(t, client.Debug, true)
@@ -540,17 +537,6 @@ func TestClientOptions(t *testing.T) {
 
 	client.SetCloseConnection(true)
 	assertEqual(t, client.closeConnection, true)
-}
-
-func TestContentLengthWhenBodyIsNil(t *testing.T) {
-	client := dc()
-
-	client.SetPreRequestHook(func(c *Client, r *http.Request) error {
-		assertEqual(t, "0", r.Header.Get(hdrContentLengthKey))
-		return nil
-	})
-
-	client.R().SetContentLength(true).SetBody(nil).Get("http://localhost")
 }
 
 func TestClientPreRequestHook(t *testing.T) {

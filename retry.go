@@ -136,6 +136,12 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 		}
 
 		if opts.resetReaders {
+			if rs, ok := resp.Request.Body.(io.ReadSeeker); ok {
+				_, err := rs.Seek(0, io.SeekStart)
+				if err != nil {
+					return err
+				}
+			}
 			if err := resetFileReaders(resp.Request.multipartFiles); err != nil {
 				return err
 			}

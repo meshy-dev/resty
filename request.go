@@ -53,7 +53,6 @@ type Request struct {
 
 	isMultiPart         bool
 	isFormData          bool
-	setContentLength    bool
 	isSaveResponse      bool
 	notParseResponse    bool
 	jsonEscapeHTML      bool
@@ -495,19 +494,6 @@ func (r *Request) SetMultipartFields(fields ...*MultipartField) *Request {
 // Typically, the `mime/multipart` package generates a random multipart boundary if not provided.
 func (r *Request) SetMultipartBoundary(boundary string) *Request {
 	r.multipartBoundary = boundary
-	return r
-}
-
-// SetContentLength method sets the current request's HTTP header `Content-Length` value.
-// By default, Resty won't set `Content-Length`.
-//
-// See [Client.SetContentLength]
-//
-//	client.R().SetContentLength(true)
-//
-// It overrides the value set at the client instance level.
-func (r *Request) SetContentLength(l bool) *Request {
-	r.setContentLength = l
 	return r
 }
 

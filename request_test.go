@@ -512,7 +512,6 @@ func TestPostXMLBytesSuccess(t *testing.T) {
 		SetHeader(hdrContentTypeKey, "application/xml").
 		SetBody([]byte(`<?xml version="1.0" encoding="UTF-8"?><User><Username>testuser</Username><Password>testpass</Password></User>`)).
 		SetQueryParam("request_no", strconv.FormatInt(time.Now().Unix(), 10)).
-		SetContentLength(true).
 		Post(ts.URL + "/login")
 
 	assertError(t, err)
@@ -528,7 +527,6 @@ func TestPostXMLStructSuccess(t *testing.T) {
 	resp, err := dclr().
 		SetHeader(hdrContentTypeKey, "application/xml").
 		SetBody(User{Username: "testuser", Password: "testpass"}).
-		SetContentLength(true).
 		SetResult(&AuthSuccess{}).
 		Post(ts.URL + "/login")
 
@@ -799,7 +797,6 @@ func TestFormData(t *testing.T) {
 
 	c := dc()
 	c.SetFormData(map[string]string{"zip_code": "00000", "city": "Los Angeles"}).
-		SetContentLength(true).
 		SetDebug(true)
 	c.outputLogTo(io.Discard)
 
@@ -822,7 +819,7 @@ func TestMultiValueFormData(t *testing.T) {
 	}
 
 	c := dc()
-	c.SetContentLength(true).SetDebug(true)
+	c.SetDebug(true)
 	c.outputLogTo(io.Discard)
 
 	resp, err := c.R().
@@ -840,7 +837,6 @@ func TestFormDataDisableWarn(t *testing.T) {
 
 	c := dc()
 	c.SetFormData(map[string]string{"zip_code": "00000", "city": "Los Angeles"}).
-		SetContentLength(true).
 		SetDisableWarn(true)
 	c.outputLogTo(io.Discard)
 
@@ -867,7 +863,6 @@ func TestMultiPartUploadFile(t *testing.T) {
 
 	resp, err := c.R().
 		SetFile("profile_img", filepath.Join(basePath, "test-img.png")).
-		SetContentLength(true).
 		Post(ts.URL + "/upload")
 
 	assertError(t, err)
@@ -886,7 +881,6 @@ func TestMultiPartUploadFileViaPatch(t *testing.T) {
 
 	resp, err := c.R().
 		SetFile("profile_img", filepath.Join(basePath, "test-img.png")).
-		SetContentLength(true).
 		Patch(ts.URL + "/upload")
 
 	assertError(t, err)
@@ -1213,7 +1207,6 @@ func TestPutJSONString(t *testing.T) {
 		return nil
 	})
 	client.OnBeforeRequest(func(c *Client, r *Request) error {
-		c.SetContentLength(true)
 		r.SetHeader("X-ContentLength", "OnBeforeRequest ContentLength set")
 		return nil
 	})
@@ -1255,7 +1248,6 @@ func TestOnBeforeMiddleware(t *testing.T) {
 		return nil
 	})
 	c.OnBeforeRequest(func(c *Client, r *Request) error {
-		c.SetContentLength(true)
 		r.SetHeader("X-ContentLength", "OnBeforeRequest ContentLength set")
 		return nil
 	})
@@ -1393,7 +1385,6 @@ func TestRawFileUploadByBody(t *testing.T) {
 
 	resp, err := dclr().
 		SetBody(fileBytes).
-		SetContentLength(true).
 		SetAuthToken("004DDB79-6801-4587-B976-F093E6AC44FF").
 		Put(ts.URL + "/raw-upload")
 
@@ -1910,7 +1901,6 @@ func TestRequestFileUploadAsReader(t *testing.T) {
 	resp, err = dclr().
 		SetBody(file).
 		SetHeader("Content-Type", "image/png").
-		SetContentLength(true).
 		Post(ts.URL + "/upload")
 
 	assertError(t, err)
@@ -2276,7 +2266,7 @@ func TestRequestGH917(t *testing.T) {
 		func(r *Response, err error) bool {
 			return err != nil || r.StatusCode() > 499
 		},
-	).SetRetryCount(3)
+	).SetRetryCount(3).SetRetryResetReaders(true)
 
 	wg := sync.WaitGroup{}
 	// Run tests concurrently to make the issue easily to observe.
@@ -2285,9 +2275,9 @@ func TestRequestGH917(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				buf := bytes.NewBufferString("test")
+				buf := strings.NewReader("test")
 				// Trigger some retries
-				resp, err := client.R().SetBody(buf).SetContentLength(true).Execute(http.MethodPost, srv.URL)
+				resp, err := client.R().SetBody(buf).Execute(http.MethodPost, srv.URL)
 				assertNil(t, err)
 				assertEqual(t, http.StatusInternalServerError, resp.StatusCode())
 				assertEqual(t, "", string(resp.Body()))
@@ -2295,28 +2285,4 @@ func TestRequestGH917(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-}
-
-func TestSetContentLengthTrueWithNilBody(t *testing.T) {
-	ts := createPostServer(t)
-	defer ts.Close()
-
-	c := dc()
-
-	c.OnBeforeRequest(func(client *Client, request *Request) error {
-		request.
-			SetBody(nil).
-			SetContentLength(true)
-
-		return nil
-	})
-
-	c = c.SetBaseURL(ts.URL)
-
-	resp, err := c.R().Execute("POST", "/check-request-content-length")
-
-	assertNil(t, err)
-
-	// when body is nil and SetContentLength is true expect Content-Length == "0"
-	assertEqual(t, "0", resp.Header().Get("Request-Content-Length"))
 }
