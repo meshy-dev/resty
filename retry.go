@@ -142,9 +142,6 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 					return err
 				}
 			}
-			if err := resetFileReaders(resp.Request.multipartFiles); err != nil {
-				return err
-			}
 			if err := resetFieldReaders(resp.Request.multipartFields); err != nil {
 				return err
 			}
@@ -246,18 +243,6 @@ func newRnd() *rand.Rand {
 	var seed = time.Now().UnixNano()
 	var src = rand.NewSource(seed)
 	return rand.New(src)
-}
-
-func resetFileReaders(files []*File) error {
-	for _, f := range files {
-		if rs, ok := f.Reader.(io.ReadSeeker); ok {
-			if _, err := rs.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func resetFieldReaders(fields []*MultipartField) error {

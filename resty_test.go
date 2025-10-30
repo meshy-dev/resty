@@ -27,9 +27,9 @@ import (
 	"time"
 )
 
-//‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
 // Testing Unexported methods
-//___________________________________
+// ___________________________________
 
 func getTestDataPath() string {
 	pwd, _ := os.Getwd()
@@ -846,6 +846,13 @@ func assertNotNil(t *testing.T, v interface{}) {
 func assertType(t *testing.T, typ, v interface{}) {
 	if reflect.DeepEqual(reflect.TypeOf(typ), reflect.TypeOf(v)) {
 		t.Errorf("Expected type %t, got %t", typ, v)
+	}
+}
+
+func assertErrorContains(t *testing.T, err error, msg string) {
+	t.Helper()
+	if !strings.Contains(err.Error(), msg) {
+		t.Errorf("Error message [%v] does not contain [%v]", err.Error(), msg)
 	}
 }
 

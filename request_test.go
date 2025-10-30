@@ -897,16 +897,14 @@ func TestMultiPartUploadFileError(t *testing.T) {
 	c := dc()
 	c.SetFormData(map[string]string{"zip_code": "00001", "city": "Los Angeles"})
 
-	resp, err := c.R().
+	_, err := c.R().
 		SetFile("profile_img", filepath.Join(basePath, "test-img-not-exists.png")).
 		Post(ts.URL + "/upload")
 
 	if err == nil {
 		t.Errorf("Expected [%v], got [%v]", nil, err)
 	}
-	if resp != nil {
-		t.Errorf("Expected [%v], got [%v]", nil, resp)
-	}
+	assertErrorContains(t, err, "no such file or directory")
 }
 
 func TestMultiPartUploadFiles(t *testing.T) {
@@ -940,14 +938,6 @@ func TestMultiPartIoReaderFiles(t *testing.T) {
 	basePath := getTestDataPath()
 	profileImgBytes, _ := os.ReadFile(filepath.Join(basePath, "test-img.png"))
 	notesBytes, _ := os.ReadFile(filepath.Join(basePath, "text-file.txt"))
-
-	// Just info values
-	file := File{
-		Name:      "test_file_name.jpg",
-		ParamName: "test_param",
-		Reader:    bytes.NewBuffer([]byte("test bytes")),
-	}
-	t.Logf("File Info: %v", file.String())
 
 	resp, err := dclr().
 		SetFormData(map[string]string{"first_name": "Jeevanandam", "last_name": "M"}).
@@ -2131,33 +2121,12 @@ func TestDebugLoggerRequestBodyTooLarge(t *testing.T) {
 
 	debugBodySizeLimit := int64(512)
 
-	// upload an image with more than 512 bytes
-	output := bytes.NewBufferString("")
-	resp, err := New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
-		SetFile("file", filepath.Join(getTestDataPath(), "test-img.png")).
-		SetHeader("Content-Type", "image/png").
-		Post(ts.URL + "/upload")
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, true, strings.Contains(output.String(), "REQUEST TOO LARGE"))
-
-	// upload a text file with no more than 512 bytes
-	output = bytes.NewBufferString("")
-	resp, err = New().outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
-		SetDebug(true).
-		SetFile("file", filepath.Join(getTestDataPath(), "text-file.txt")).
-		SetHeader("Content-Type", "text/plain").
-		Post(ts.URL + "/upload")
-	assertNil(t, err)
-	assertNotNil(t, resp)
-	assertEqual(t, true, strings.Contains(output.String(), " THIS IS TEXT FILE FOR MULTIPART UPLOAD TEST "))
-
 	formTs := createFormPostServer(t)
 	defer formTs.Close()
 
 	// post form with more than 512 bytes data
-	output = bytes.NewBufferString("")
-	resp, err = New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
+	output := bytes.NewBufferString("")
+	resp, err := New().SetDebug(true).outputLogTo(output).SetDebugBodyLimit(debugBodySizeLimit).R().
 		SetFormData(map[string]string{
 			"first_name": "Alex",
 			"last_name":  strings.Repeat("C", int(debugBodySizeLimit)),
@@ -2237,10 +2206,9 @@ func TestPostBodyError(t *testing.T) {
 	defer ts.Close()
 
 	c := dc()
-	resp, err := c.R().SetBody(brokenReadCloser{}).Post(ts.URL + "/redirect")
+	_, err := c.R().SetBody(brokenReadCloser{}).Post(ts.URL + "/redirect")
 	assertNotNil(t, err)
-	assertEqual(t, "read error", err.Error())
-	assertNil(t, resp)
+	assertErrorContains(t, err, "read error")
 }
 
 func TestSetResultMustNotPanicOnNil(t *testing.T) {

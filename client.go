@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"maps"
 	"math"
@@ -454,7 +453,6 @@ func (c *Client) R() *Request {
 		AuthScheme:    c.AuthScheme,
 
 		client:              c,
-		multipartFiles:      []*File{},
 		multipartFields:     []*MultipartField{},
 		jsonEscapeHTML:      c.jsonEscapeHTML,
 		log:                 c.log,
@@ -1307,12 +1305,38 @@ func (c *Client) execute(req *Request) (*Response, error) {
 		return nil, err
 	}
 
+	uploadErrChan := make(chan error, 1)
+	if req.multipartWriter != nil {
+		// Since `req.multipartWriter` might be accessed by another goroutine during retry,
+		// we capture it here to prevent data race.
+		mpw := req.multipartWriter
+		go func() {
+			err := req.writeMultipartFields(mpw.mw)
+			if err != nil {
+				uploadErrChan <- err
+			}
+			_ = mpw.mw.Close()
+			_ = mpw.pw.Close()
+			close(uploadErrChan)
+		}()
+	} else {
+		close(uploadErrChan)
+	}
 	req.Time = time.Now()
 	resp, err := c.httpClient.Do(req.RawRequest)
 
 	response := &Response{
 		Request:     req,
 		RawResponse: resp,
+	}
+
+	uploadErr := <-uploadErrChan
+	switch {
+	case uploadErr != nil && err != nil:
+		err = errors.Join(err, uploadErr)
+
+	case uploadErr != nil:
+		err = uploadErr
 	}
 
 	if err != nil || req.notParseResponse || c.notParseResponse {
@@ -1476,34 +1500,6 @@ func (c *Client) onInvalidHooks(req *Request, err error) {
 	for _, h := range c.invalidHooks {
 		h(req, err)
 	}
-}
-
-// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-// File struct and its methods
-// _______________________________________________________________________
-
-// File struct represents file information for multipart request
-type File struct {
-	Name      string
-	ParamName string
-	io.Reader
-}
-
-// String method returns the string value of current file details
-func (f *File) String() string {
-	return fmt.Sprintf("ParamName: %v; FileName: %v", f.ParamName, f.Name)
-}
-
-// ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-// MultipartField struct
-// _______________________________________________________________________
-
-// MultipartField struct represents the custom data part for a multipart request
-type MultipartField struct {
-	Param       string
-	FileName    string
-	ContentType string
-	io.Reader
 }
 
 func createClient(hc *http.Client) *Client {
