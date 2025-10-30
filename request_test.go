@@ -897,16 +897,14 @@ func TestMultiPartUploadFileError(t *testing.T) {
 	c := dc()
 	c.SetFormData(map[string]string{"zip_code": "00001", "city": "Los Angeles"})
 
-	resp, err := c.R().
+	_, err := c.R().
 		SetFile("profile_img", filepath.Join(basePath, "test-img-not-exists.png")).
 		Post(ts.URL + "/upload")
 
 	if err == nil {
 		t.Errorf("Expected [%v], got [%v]", nil, err)
 	}
-	if resp != nil {
-		t.Errorf("Expected [%v], got [%v]", nil, resp)
-	}
+	assertErrorContains(t, err, "no such file or directory")
 }
 
 func TestMultiPartUploadFiles(t *testing.T) {
@@ -2216,10 +2214,9 @@ func TestPostBodyError(t *testing.T) {
 	defer ts.Close()
 
 	c := dc()
-	resp, err := c.R().SetBody(brokenReadCloser{}).Post(ts.URL + "/redirect")
+	_, err := c.R().SetBody(brokenReadCloser{}).Post(ts.URL + "/redirect")
 	assertNotNil(t, err)
-	assertEqual(t, "read error", err.Error())
-	assertNil(t, resp)
+	assertErrorContains(t, err, "read error")
 }
 
 func TestSetResultMustNotPanicOnNil(t *testing.T) {

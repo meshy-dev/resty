@@ -2,6 +2,7 @@ package resty
 
 import (
 	"io"
+	"mime/multipart"
 )
 
 // ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
@@ -17,4 +18,9 @@ type MultipartField struct {
 	// Reader is an input of [io.Reader] for multipart upload. It
 	// is optional if you set the FilePath value
 	io.Reader
+}
+
+type multipartAndPipeWriter struct {
+	mw *multipart.Writer
+	pw *io.PipeWriter
 }

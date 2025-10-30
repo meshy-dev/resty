@@ -437,28 +437,21 @@ func handleMultipart(c *Client, r *Request) error {
 	}
 
 	pr, pw := io.Pipe()
-	w := multipart.NewWriter(pw)
+	mw := multipart.NewWriter(pw)
 	r.Body = pr
-	r.multipartErrChan = make(chan error, 1)
+	r.multipartWriter = &multipartAndPipeWriter{
+		mw: mw,
+		pw: pw,
+	}
 
 	// Set boundary if not set by user
 	if r.multipartBoundary != "" {
-		if err := w.SetBoundary(r.multipartBoundary); err != nil {
+		if err := mw.SetBoundary(r.multipartBoundary); err != nil {
 			return err
 		}
 	}
 
-	go func() {
-		err := r.writeMultipartFields(w)
-		if err != nil {
-			r.multipartErrChan <- err
-		}
-		close(r.multipartErrChan)
-		_ = w.Close()
-		_ = pw.Close()
-	}()
-
-	r.Header.Set(hdrContentTypeKey, w.FormDataContentType())
+	r.Header.Set(hdrContentTypeKey, mw.FormDataContentType())
 	return nil
 }
 

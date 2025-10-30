@@ -849,6 +849,13 @@ func assertType(t *testing.T, typ, v interface{}) {
 	}
 }
 
+func assertErrorContains(t *testing.T, err error, msg string) {
+	t.Helper()
+	if !strings.Contains(err.Error(), msg) {
+		t.Errorf("Error message [%v] does not contain [%v]", err.Error(), msg)
+	}
+}
+
 func assertError(t *testing.T, err error) {
 	if err != nil {
 		t.Errorf("Error occurred [%v]", err)

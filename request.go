@@ -53,10 +53,15 @@ type Request struct {
 	// request execution flow, including retry count.
 	Attempt int
 
-	isMultiPart         bool
+	isMultiPart bool
+	// disableStreamUpload indicates whether to disable stream upload for multipart request
+	disableStreamUpload bool
+	multipartWriter     *multipartAndPipeWriter
+	multipartBoundary   string
+	multipartFields     []*MultipartField
+
 	isFormData          bool
 	isSaveResponse      bool
-	disableStreamUpload bool
 	notParseResponse    bool
 	jsonEscapeHTML      bool
 	trace               bool
@@ -69,9 +74,6 @@ type Request struct {
 	bodyBuf             *bytes.Buffer
 	clientTrace         *clientTrace
 	log                 Logger
-	multipartBoundary   string
-	multipartFields     []*MultipartField
-	multipartErrChan    chan error
 	retryConditions     []RetryConditionFunc
 	responseBodyLimit   int
 	generateCurlOnDebug bool
