@@ -508,22 +508,6 @@ func Test_parseRequestBody(t *testing.T) {
 			init: func(c *Client, r *Request) {},
 		},
 		{
-			name: "empty body with SetContentLength by request",
-			init: func(c *Client, r *Request) {
-				r.SetContentLength(true)
-			},
-			expectedContentLength: "0",
-			expectedBodyBuf:       []byte{},
-		},
-		{
-			name: "empty body with SetContentLength by client",
-			init: func(c *Client, r *Request) {
-				c.SetContentLength(true)
-			},
-			expectedContentLength: "0",
-			expectedBodyBuf:       []byte{},
-		},
-		{
 			name: "string body",
 			init: func(c *Client, r *Request) {
 				r.SetBody("foo")
@@ -641,26 +625,6 @@ func Test_parseRequestBody(t *testing.T) {
 			expectedContentType: jsonContentType,
 		},
 		{
-			name: "io.Reader body with SetContentLength by request",
-			init: func(c *Client, r *Request) {
-				r.SetBody(bytes.NewBufferString("foo")).
-					SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte("foo"),
-			expectedContentLength: "3",
-			expectedContentType:   jsonContentType,
-		},
-		{
-			name: "io.Reader body with SetContentLength by client",
-			init: func(c *Client, r *Request) {
-				c.SetContentLength(true)
-				r.SetBody(bytes.NewBufferString("foo"))
-			},
-			expectedBodyBuf:       []byte("foo"),
-			expectedContentLength: "3",
-			expectedContentType:   jsonContentType,
-		},
-		{
 			name: "form data by request",
 			init: func(c *Client, r *Request) {
 				r.SetFormData(map[string]string{
@@ -696,154 +660,6 @@ func Test_parseRequestBody(t *testing.T) {
 			},
 			expectedBodyBuf:     []byte("foo=3&bar=2&baz=4"),
 			expectedContentType: formContentType,
-		},
-		{
-			name: "json from struct",
-			init: func(c *Client, r *Request) {
-				r.SetBody(struct {
-					Foo string `json:"foo"`
-					Bar string `json:"bar"`
-				}{
-					Foo: "1",
-					Bar: "2",
-				}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"foo":"1","bar":"2"}`),
-			expectedContentType:   jsonContentType,
-			expectedContentLength: "21",
-		},
-		{
-			name: "json from slice",
-			init: func(c *Client, r *Request) {
-				r.SetBody([]string{"foo", "bar"}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`["foo","bar"]`),
-			expectedContentType:   jsonContentType,
-			expectedContentLength: "13",
-		},
-		{
-			name: "json from map",
-			init: func(c *Client, r *Request) {
-				r.SetBody(map[string]interface{}{
-					"foo": "1",
-					"bar": []int{1, 2, 3},
-					"baz": map[string]string{
-						"qux": "4",
-					},
-					"xyz": nil,
-				}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":[1,2,3],"baz":{"qux":"4"},"foo":"1","xyz":null}`),
-			expectedContentType:   jsonContentType,
-			expectedContentLength: "54",
-		},
-		{
-			name: "json from map",
-			init: func(c *Client, r *Request) {
-				r.SetBody(map[string]interface{}{
-					"foo": "1",
-					"bar": []int{1, 2, 3},
-					"baz": map[string]string{
-						"qux": "4",
-					},
-					"xyz": nil,
-				}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":[1,2,3],"baz":{"qux":"4"},"foo":"1","xyz":null}`),
-			expectedContentType:   jsonContentType,
-			expectedContentLength: "54",
-		},
-		{
-			name: "json from map",
-			init: func(c *Client, r *Request) {
-				r.SetBody(map[string]interface{}{
-					"foo": "1",
-					"bar": []int{1, 2, 3},
-					"baz": map[string]string{
-						"qux": "4",
-					},
-					"xyz": nil,
-				}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":[1,2,3],"baz":{"qux":"4"},"foo":"1","xyz":null}`),
-			expectedContentType:   jsonContentType,
-			expectedContentLength: "54",
-		},
-		{
-			name: "xml from struct",
-			init: func(c *Client, r *Request) {
-				type FooBar struct {
-					Foo string `xml:"foo"`
-					Bar string `xml:"bar"`
-				}
-				r.SetBody(FooBar{
-					Foo: "1",
-					Bar: "2",
-				}).
-					SetContentLength(true).
-					SetHeader(hdrContentTypeKey, "text/xml")
-			},
-			expectedBodyBuf:       []byte(`<FooBar><foo>1</foo><bar>2</bar></FooBar>`),
-			expectedContentType:   "text/xml",
-			expectedContentLength: "41",
-		},
-		{
-			name: "mulipart form data",
-			init: func(c *Client, r *Request) {
-				c.SetFormData(map[string]string{
-					"foo": "1",
-					"bar": "2",
-				})
-				r.SetFormData(map[string]string{
-					"foo": "3",
-					"baz": "4",
-				})
-				r.SetMultipartFormData(map[string]string{
-					"foo": "5",
-					"xyz": "6",
-				}).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":"2", "baz":"4", "foo":"5", "xyz":"6"}`),
-			expectedContentType:   "multipart/form-data; boundary=",
-			expectedContentLength: "744",
-		},
-		{
-			name: "multipart fields",
-			init: func(c *Client, r *Request) {
-				r.SetMultipartFields(
-					&MultipartField{
-						Param:       "foo",
-						ContentType: "text/plain",
-						Reader:      strings.NewReader("1"),
-					},
-					&MultipartField{
-						Param:       "bar",
-						ContentType: "text/plain",
-						Reader:      strings.NewReader("2"),
-					},
-				).SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":"2","foo":"1"}`),
-			expectedContentType:   "multipart/form-data; boundary=",
-			expectedContentLength: "344",
-		},
-		{
-			name: "multipart files",
-			init: func(c *Client, r *Request) {
-				r.SetFileReader("foo", "foo.txt", strings.NewReader("1")).
-					SetFileReader("bar", "bar.txt", strings.NewReader("2")).
-					SetContentLength(true)
-			},
-			expectedBodyBuf:       []byte(`{"bar":"2","foo":"1"}`),
-			expectedContentType:   "multipart/form-data; boundary=",
-			expectedContentLength: "414",
-		},
-		{
-			name: "body with errorReader",
-			init: func(c *Client, r *Request) {
-				r.SetBody(&errorReader{}).SetContentLength(true)
-			},
-			wantErr: true,
 		},
 		{
 			name: "unsupported type",
@@ -972,7 +788,7 @@ func Test_parseRequestBody(t *testing.T) {
 func Benchmark_parseRequestBody_string(b *testing.B) {
 	c := New()
 	r := c.R()
-	r.SetBody("foo").SetContentLength(true)
+	r.SetBody("foo")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -984,7 +800,7 @@ func Benchmark_parseRequestBody_string(b *testing.B) {
 func Benchmark_parseRequestBody_byte(b *testing.B) {
 	c := New()
 	r := c.R()
-	r.SetBody([]byte("foo")).SetContentLength(true)
+	r.SetBody([]byte("foo"))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -996,7 +812,7 @@ func Benchmark_parseRequestBody_byte(b *testing.B) {
 func Benchmark_parseRequestBody_reader_with_SetContentLength(b *testing.B) {
 	c := New()
 	r := c.R()
-	r.SetBody(bytes.NewBufferString("foo")).SetContentLength(true)
+	r.SetBody(bytes.NewBufferString("foo"))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1024,7 +840,7 @@ func Benchmark_parseRequestBody_struct(b *testing.B) {
 	}
 	c := New()
 	r := c.R()
-	r.SetBody(FooBar{Foo: "1", Bar: "2"}).SetContentLength(true).SetHeader(hdrContentTypeKey, jsonContentType)
+	r.SetBody(FooBar{Foo: "1", Bar: "2"}).SetHeader(hdrContentTypeKey, jsonContentType)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1040,7 +856,7 @@ func Benchmark_parseRequestBody_struct_xml(b *testing.B) {
 	}
 	c := New()
 	r := c.R()
-	r.SetBody(FooBar{Foo: "1", Bar: "2"}).SetContentLength(true).SetHeader(hdrContentTypeKey, "text/xml")
+	r.SetBody(FooBar{Foo: "1", Bar: "2"}).SetHeader(hdrContentTypeKey, "text/xml")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1055,7 +871,7 @@ func Benchmark_parseRequestBody_map(b *testing.B) {
 	r.SetBody(map[string]string{
 		"foo": "1",
 		"bar": "2",
-	}).SetContentLength(true).SetHeader(hdrContentTypeKey, jsonContentType)
+	}).SetHeader(hdrContentTypeKey, jsonContentType)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1067,7 +883,7 @@ func Benchmark_parseRequestBody_map(b *testing.B) {
 func Benchmark_parseRequestBody_slice(b *testing.B) {
 	c := New()
 	r := c.R()
-	r.SetBody([]string{"1", "2"}).SetContentLength(true).SetHeader(hdrContentTypeKey, jsonContentType)
+	r.SetBody([]string{"1", "2"}).SetHeader(hdrContentTypeKey, jsonContentType)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1080,7 +896,7 @@ func Benchmark_parseRequestBody_FormData(b *testing.B) {
 	c := New()
 	r := c.R()
 	c.SetFormData(map[string]string{"foo": "1", "bar": "2"})
-	r.SetFormData(map[string]string{"foo": "3", "baz": "4"}).SetContentLength(true)
+	r.SetFormData(map[string]string{"foo": "3", "baz": "4"})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {
@@ -1102,8 +918,7 @@ func Benchmark_parseRequestBody_MultiPart(b *testing.B) {
 				ContentType: "text/plain",
 				Reader:      strings.NewReader("8"),
 			},
-		).
-		SetContentLength(true)
+		)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := parseRequestBody(c, r); err != nil {

@@ -127,8 +127,8 @@ func Example_dropboxUpload() {
 
 	// See we are not setting content-type header, since go-resty automatically detects Content-Type for you
 	resp, err := client.R().
-		SetBody(fileBytes).     // resty autodetects content type
-		SetContentLength(true). // Dropbox expects this value
+		SetBody(fileBytes).                                        // resty autodetects content type
+		SetHeader("Content-Length", strconv.Itoa(len(fileBytes))). // Dropbox expects this value
 		SetAuthToken("<your-auth-token>").
 		SetError(DropboxError{}).
 		Post("https://content.dropboxapi.com/1/files_put/auto/resty/mydocument.pdf") // you can use PUT method too dropbox supports it

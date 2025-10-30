@@ -133,7 +133,6 @@ type Client struct {
 	ResponseBodyLimit      int
 
 	jsonEscapeHTML      bool
-	setContentLength    bool
 	closeConnection     bool
 	notParseResponse    bool
 	trace               bool
@@ -644,17 +643,6 @@ func (c *Client) SetAllowGetMethodPayload(a bool) *Client {
 // Compliant to interface [resty.Logger]
 func (c *Client) SetLogger(l Logger) *Client {
 	c.log = l
-	return c
-}
-
-// SetContentLength method enables the HTTP header `Content-Length` value for every request.
-// By default, Resty won't set `Content-Length`.
-//
-//	client.SetContentLength(true)
-//
-// Also, you have the option to enable a particular request. See [Request.SetContentLength]
-func (c *Client) SetContentLength(l bool) *Client {
-	c.setContentLength = l
 	return c
 }
 
