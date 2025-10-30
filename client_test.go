@@ -1124,7 +1124,7 @@ func TestClone(t *testing.T) {
 	clone := parent.Clone()
 	// update value of non-interface type - change will only happen on clone
 	clone.SetBaseURL("https://local.host")
-	// update value of interface type - change will also happen on parent
+	// update value of interface type - change will only happen on clone
 	clone.UserInfo.Username = "clone"
 
 	// asert non-interface type
@@ -1132,7 +1132,7 @@ func TestClone(t *testing.T) {
 	assertEqual(t, "https://local.host", clone.BaseURL)
 
 	// assert interface type
-	assertEqual(t, "clone", parent.UserInfo.Username)
+	assertEqual(t, "parent", parent.UserInfo.Username)
 	assertEqual(t, "clone", clone.UserInfo.Username)
 }
 
