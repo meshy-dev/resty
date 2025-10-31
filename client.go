@@ -1184,15 +1184,20 @@ func cloneCookie(c *http.Cookie) *http.Cookie {
 	}
 }
 
-// DeepClone returns a deep copy of the original client at best effort.
+// Clone returns a deep copy of the original client at best effort.
 //
 // NOTE: Use with care:
 //   - Interface values are not deeply cloned. Thus, both the original and the
 //     clone will use the same value.
 //   - This function is not safe for concurrent use. You should only use this method
 //     when you are sure that any other goroutine is not using the client.
-func (c *Client) DeepClone() *Client {
-	cc := c.Clone()
+func (c *Client) Clone() *Client {
+	// dereference the pointer and copy the value
+	cc := *c
+
+	// lock values should not be copied - thus new values are used.
+	cc.afterResponseLock = &sync.RWMutex{}
+	cc.udBeforeRequestLock = &sync.RWMutex{}
 
 	cc.QueryParam = cloneURLValues(c.QueryParam)
 	cc.FormData = cloneURLValues(c.FormData)
@@ -1225,23 +1230,6 @@ func (c *Client) DeepClone() *Client {
 	cc.invalidHooks = slices.Clone(c.invalidHooks)
 	cc.panicHooks = slices.Clone(c.panicHooks)
 
-	return cc
-}
-
-// Clone returns a clone of the original client.
-//
-// NOTE: Use with care:
-//   - Interface values are not deeply cloned. Thus, both the original and the
-//     clone will use the same value.
-//   - This function is not safe for concurrent use. You should only use this method
-//     when you are sure that any other goroutine is not using the client.
-func (c *Client) Clone() *Client {
-	// dereference the pointer and copy the value
-	cc := *c
-
-	// lock values should not be copied - thus new values are used.
-	cc.afterResponseLock = &sync.RWMutex{}
-	cc.udBeforeRequestLock = &sync.RWMutex{}
 	return &cc
 }
 
