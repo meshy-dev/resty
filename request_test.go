@@ -2234,7 +2234,7 @@ func TestRequestGH917(t *testing.T) {
 		func(r *Response, err error) bool {
 			return err != nil || r.StatusCode() > 499
 		},
-	).SetRetryCount(3).SetRetryResetReaders(true)
+	).SetRetryCount(3)
 
 	wg := sync.WaitGroup{}
 	// Run tests concurrently to make the issue easily to observe.

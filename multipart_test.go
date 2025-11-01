@@ -49,8 +49,7 @@ func TestRetryMultiPartUploadWithStreaming(t *testing.T) {
 	basePath := getTestDataPath()
 	c := New().
 		SetRetryCount(3).
-		AddRetryAfterErrorCondition().
-		SetRetryResetReaders(true)
+		AddRetryAfterErrorCondition()
 	resp, err := c.R().
 		SetFile("file1", filepath.Join(basePath, "test-img.png")).
 		SetFile("file2", filepath.Join(basePath, "text-file.txt")).
