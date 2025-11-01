@@ -246,7 +246,8 @@ func TestClientRetryWait(t *testing.T) {
 		slept := time.Duration(retryIntervals[i])
 		// Ensure that client has slept some duration between
 		// waitTime and maxWaitTime for consequent requests
-		if slept < retryWaitTime || slept > retryMaxWaitTime {
+		isExceed := (slept - retryMaxWaitTime) > time.Millisecond // avoid flaky test due to time measurement precision
+		if slept < retryWaitTime || isExceed {
 			t.Errorf("Client has slept %f seconds before retry %d", slept.Seconds(), i)
 		}
 	}
