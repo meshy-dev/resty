@@ -5,6 +5,7 @@
 package resty
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -192,12 +193,10 @@ func parseRequestBody(c *Client, r *Request) error {
 			if err := handleMultipart(c, r); err != nil {
 				return err
 			}
+
 		case len(c.FormData) > 0 || len(r.FormData) > 0: // Handling Form Data
 			handleFormData(c, r)
-		case r.Body == nil && r.bodyBuf == nil: // Handling Request body when nil body
-			// Go http library omits Content-Length if body is nil; use http.NoBody to force it if SetContentLength is true
-			r.Body = http.NoBody
-			fallthrough
+
 		case r.Body != nil: // Handling Request body
 			handleContentType(c, r)
 
@@ -210,14 +209,14 @@ func parseRequestBody(c *Client, r *Request) error {
 }
 
 func createHTTPRequest(c *Client, r *Request) (err error) {
-	if r.bodyBuf == nil {
+	if r.bodyReadSeeker == nil {
 		if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
 			r.RawRequest, err = http.NewRequest(r.Method, r.URL, reader)
 		} else {
 			r.RawRequest, err = http.NewRequest(r.Method, r.URL, nil)
 		}
 	} else {
-		r.RawRequest, err = http.NewRequest(r.Method, r.URL, r.bodyBuf)
+		r.RawRequest, err = http.NewRequest(r.Method, r.URL, r.bodyReadSeeker)
 	}
 
 	if err != nil {
@@ -413,23 +412,30 @@ func handleMultipart(c *Client, r *Request) error {
 	}
 
 	if r.disableStreamUpload || len(r.multipartFields) == 0 {
-		r.bodyBuf = acquireBuffer()
-		w := multipart.NewWriter(r.bodyBuf)
+		if r.bodyReadSeeker != nil {
+			return nil
+		}
+
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
 
 		// Set boundary if not set by user
 		if r.multipartBoundary != "" {
 			if err := w.SetBoundary(r.multipartBoundary); err != nil {
+				closeq(w)
 				return err
 			}
 		}
 
 		err := r.writeMultipartFields(w)
 		if err != nil {
+			closeq(w)
 			return err
 		}
 
 		r.Header.Set(hdrContentTypeKey, w.FormDataContentType())
-		_ = w.Close()
+		closeq(w)
+		r.bodyReadSeeker = bytes.NewReader(buf.Bytes())
 		return nil
 	}
 
@@ -453,6 +459,10 @@ func handleMultipart(c *Client, r *Request) error {
 }
 
 func handleFormData(c *Client, r *Request) {
+	if r.bodyReadSeeker != nil {
+		return
+	}
+
 	for k, v := range c.FormData {
 		if _, ok := r.FormData[k]; ok {
 			continue
@@ -460,8 +470,7 @@ func handleFormData(c *Client, r *Request) {
 		r.FormData[k] = v[:]
 	}
 
-	r.bodyBuf = acquireBuffer()
-	r.bodyBuf.WriteString(r.FormData.Encode())
+	r.bodyReadSeeker = strings.NewReader(r.FormData.Encode())
 	r.Header.Set(hdrContentTypeKey, formContentType)
 	r.isFormData = true
 }
@@ -475,38 +484,33 @@ func handleContentType(c *Client, r *Request) {
 }
 
 func handleRequestBody(c *Client, r *Request) error {
-	var bodyBytes []byte
-	r.bodyBuf = nil
+	if r.bodyReadSeeker != nil {
+		return nil
+	}
 
 	switch body := r.Body.(type) {
 	case io.Reader:
-		return nil
+
 	case []byte:
-		bodyBytes = body
+		r.bodyReadSeeker = bytes.NewReader(body)
+
 	case string:
-		bodyBytes = []byte(body)
+		r.bodyReadSeeker = strings.NewReader(body)
+
 	default:
 		contentType := r.Header.Get(hdrContentTypeKey)
 		kind := kindOf(r.Body)
 		var err error
 		if IsJSONType(contentType) && (kind == reflect.Struct || kind == reflect.Map || kind == reflect.Slice) {
-			r.bodyBuf, err = jsonMarshal(c, r, r.Body)
+			err = jsonMarshal(c, r)
 		} else if IsXMLType(contentType) && (kind == reflect.Struct) {
-			bodyBytes, err = c.XMLMarshal(r.Body)
+			err = xmlMarshal(c, r)
+		} else {
+			err = errors.New("unsupported 'Body' type/value")
 		}
 		if err != nil {
 			return err
 		}
-	}
-
-	if bodyBytes == nil && r.bodyBuf == nil {
-		return errors.New("unsupported 'Body' type/value")
-	}
-
-	// []byte into Buffer
-	if bodyBytes != nil && r.bodyBuf == nil {
-		r.bodyBuf = acquireBuffer()
-		_, _ = r.bodyBuf.Write(bodyBytes)
 	}
 
 	return nil

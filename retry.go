@@ -135,6 +135,10 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 			return err
 		}
 
+		if resp != nil && resp.Request.bodyReadSeeker != nil {
+			silently(resp.Request.bodyReadSeeker.Seek(0, io.SeekStart))
+		}
+
 		if opts.resetReaders {
 			if rs, ok := resp.Request.Body.(io.ReadSeeker); ok {
 				_, err := rs.Seek(0, io.SeekStart)

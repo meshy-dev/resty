@@ -144,19 +144,32 @@ type ResponseLog struct {
 }
 
 // way to disable the HTML escape as opt-in
-func jsonMarshal(c *Client, r *Request, d interface{}) (*bytes.Buffer, error) {
+func jsonMarshal(c *Client, r *Request) error {
 	if !r.jsonEscapeHTML || !c.jsonEscapeHTML {
-		return noescapeJSONMarshal(d)
+		var buf bytes.Buffer
+		err := noescapeJSONMarshal(&buf, r.Body)
+		if err != nil {
+			return err
+		}
+		r.bodyReadSeeker = bytes.NewReader(buf.Bytes())
+		return nil
 	}
 
-	data, err := c.JSONMarshal(d)
+	data, err := c.JSONMarshal(r.Body)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	r.bodyReadSeeker = bytes.NewReader(data)
+	return nil
+}
 
-	buf := acquireBuffer()
-	_, _ = buf.Write(data)
-	return buf, nil
+func xmlMarshal(c *Client, r *Request) error {
+	data, err := c.XMLMarshal(r.Body)
+	if err != nil {
+		return err
+	}
+	r.bodyReadSeeker = bytes.NewReader(data)
+	return nil
 }
 
 func firstNonEmpty(v ...string) string {
