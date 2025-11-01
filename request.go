@@ -71,7 +71,7 @@ type Request struct {
 	ctx                 context.Context
 	values              map[string]interface{}
 	client              *Client
-	bodyBuf             *bytes.Buffer
+	bodyReadSeeker      io.ReadSeeker
 	clientTrace         *clientTrace
 	log                 Logger
 	retryConditions     []RetryConditionFunc
@@ -1029,7 +1029,6 @@ func (r *Request) Execute(method, url string) (*Response, error) {
 		r.Attempt = 1
 		resp, err = r.client.execute(r)
 		r.client.onErrorHooks(r, resp, unwrapNoRetryErr(err))
-		releaseBuffer(r.bodyBuf)
 		closeFieldReaders(r.multipartFields)
 		return resp, unwrapNoRetryErr(err)
 	}
@@ -1061,7 +1060,6 @@ func (r *Request) Execute(method, url string) (*Response, error) {
 
 	r.client.onErrorHooks(r, resp, unwrapNoRetryErr(err))
 	closeFieldReaders(r.multipartFields)
-	releaseBuffer(r.bodyBuf)
 	return resp, unwrapNoRetryErr(err)
 }
 
@@ -1089,12 +1087,18 @@ func (r *Request) fmtBodyString(sl int64) (body string) {
 
 	// multipart or form-data
 	if r.isMultiPart || r.isFormData {
-		bodySize := int64(r.bodyBuf.Len())
-		if bodySize > sl {
-			body = fmt.Sprintf("***** REQUEST TOO LARGE (size - %d) *****", bodySize)
-			return
+		if r.bodyReadSeeker != nil {
+			data, _ := io.ReadAll(r.bodyReadSeeker)
+			silently(r.bodyReadSeeker.Seek(0, io.SeekStart))
+			bodySize := int64(len(data))
+			if bodySize > sl {
+				body = fmt.Sprintf("***** REQUEST TOO LARGE (size - %d) *****", bodySize)
+				return
+			}
+			body = string(data)
+		} else {
+			body = "***** BODY IS multipart/form-data *****"
 		}
-		body = r.bodyBuf.String()
 		return
 	}
 
@@ -1182,16 +1186,10 @@ func (r *Request) writeMultipartFields(w *multipart.Writer) error {
 	return nil
 }
 
-var noescapeJSONMarshal = func(v interface{}) (*bytes.Buffer, error) {
-	buf := acquireBuffer()
-	encoder := json.NewEncoder(buf)
+var noescapeJSONMarshal = func(w io.Writer, v any) error {
+	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(v); err != nil {
-		releaseBuffer(buf)
-		return nil, err
-	}
-
-	return buf, nil
+	return encoder.Encode(v)
 }
 
 var noescapeJSONMarshalIndent = func(v interface{}) (*bytes.Buffer, error) {

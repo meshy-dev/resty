@@ -496,12 +496,11 @@ func (errorReader) Read(p []byte) (n int, err error) {
 
 func Test_parseRequestBody(t *testing.T) {
 	for _, tt := range []struct {
-		name                  string
-		init                  func(c *Client, r *Request)
-		expectedBodyBuf       []byte
-		expectedContentLength string
-		expectedContentType   string
-		wantErr               bool
+		name                string
+		init                func(c *Client, r *Request)
+		expectedBodyBuf     []byte
+		expectedContentType string
+		wantErr             bool
 	}{
 		{
 			name: "empty body",
@@ -695,15 +694,24 @@ func Test_parseRequestBody(t *testing.T) {
 				t.Errorf("wanted error, but got nil")
 			}
 			switch {
-			case r.bodyBuf == nil && tt.expectedBodyBuf != nil:
+			case r.bodyReadSeeker == nil && tt.expectedBodyBuf != nil:
 				t.Errorf("bodyBuf is nil, but expected: %s", string(tt.expectedBodyBuf))
-			case r.bodyBuf != nil && tt.expectedBodyBuf == nil:
-				t.Errorf("bodyBuf is not nil, but expected nil: %s", r.bodyBuf.String())
-			case r.bodyBuf != nil && tt.expectedBodyBuf != nil:
-				var actual, expected interface{} = r.bodyBuf.Bytes(), tt.expectedBodyBuf
+			case r.bodyReadSeeker != nil && tt.expectedBodyBuf == nil:
+				t.Errorf("bodyBuf is not nil, but expected nil: %v", r.bodyReadSeeker)
+			case r.bodyReadSeeker != nil && tt.expectedBodyBuf != nil:
+				var (
+					actual, expected any
+					err              error
+				)
+				data, err := io.ReadAll(r.bodyReadSeeker)
+				if err != nil {
+					t.Errorf("read body buf error = %v\n", err)
+					return
+				}
+				expected = tt.expectedBodyBuf
 				if r.isFormData {
 					var err error
-					actual, err = url.ParseQuery(r.bodyBuf.String())
+					actual, err = url.ParseQuery(string(data))
 					if err != nil {
 						t.Errorf("ParseQuery(r.bodyBuf) error = %v", err)
 					}
@@ -720,7 +728,8 @@ func Test_parseRequestBody(t *testing.T) {
 					if !ok {
 						t.Errorf("boundary not found in Content-Type header")
 					}
-					reader := multipart.NewReader(r.bodyBuf, boundary)
+					r.bodyReadSeeker.Seek(0, io.SeekStart)
+					reader := multipart.NewReader(r.bodyReadSeeker, boundary)
 					body := make(map[string]interface{})
 					for part, perr := reader.NextPart(); perr != io.EOF; part, perr = reader.NextPart() {
 						if perr != nil {
@@ -742,13 +751,12 @@ func Test_parseRequestBody(t *testing.T) {
 						t.Errorf("json.Unmarshal(tt.expectedBodyBuf) error = %v", err)
 					}
 					t.Logf(`in case of an error, the expected body should be set as json for object: %#+v`, actual)
+				} else {
+					actual = data
 				}
 				if !reflect.DeepEqual(actual, expected) {
-					t.Errorf("bodyBuf = %q does not match expected %q", r.bodyBuf.String(), string(tt.expectedBodyBuf))
+					t.Errorf("bodyBuf = %q does not match expected %q", string(data), string(tt.expectedBodyBuf))
 				}
-			}
-			if tt.expectedContentLength != r.Header.Get(hdrContentLengthKey) {
-				t.Errorf("Content-Length header = %q does not match expected %q", r.Header.Get(hdrContentLengthKey), tt.expectedContentLength)
 			}
 			if ct := r.Header.Get(hdrContentTypeKey); !((tt.expectedContentType == "" && ct != "") || strings.Contains(ct, tt.expectedContentType)) {
 				t.Errorf("Content-Type header = %q does not match expected %q", r.Header.Get(hdrContentTypeKey), tt.expectedContentType)
