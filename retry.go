@@ -44,7 +44,6 @@ type (
 		maxWaitTime     time.Duration
 		retryConditions []RetryConditionFunc
 		retryHooks      []OnRetryFunc
-		resetReaders    bool
 	}
 )
 
@@ -80,14 +79,6 @@ func RetryConditions(conditions []RetryConditionFunc) Option {
 func RetryHooks(hooks []OnRetryFunc) Option {
 	return func(o *Options) {
 		o.retryHooks = hooks
-	}
-}
-
-// ResetMultipartReaders sets a boolean value which will lead the start being seeked out
-// on all multipart file readers if they implement [io.ReadSeeker]
-func ResetMultipartReaders(value bool) Option {
-	return func(o *Options) {
-		o.resetReaders = value
 	}
 }
 
@@ -135,17 +126,21 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 			return err
 		}
 
-		if resp != nil && resp.Request.bodyReadSeeker != nil {
-			silently(resp.Request.bodyReadSeeker.Seek(0, io.SeekStart))
-		}
+		if resp != nil {
+			if resp.Request.bodyReadSeeker != nil {
+				_, err := resp.Request.bodyReadSeeker.Seek(0, io.SeekStart)
+				if err != nil {
+					return err
+				}
+			}
 
-		if opts.resetReaders {
 			if rs, ok := resp.Request.Body.(io.ReadSeeker); ok {
 				_, err := rs.Seek(0, io.SeekStart)
 				if err != nil {
 					return err
 				}
 			}
+
 			if err := resetFieldReaders(resp.Request.multipartFields); err != nil {
 				return err
 			}

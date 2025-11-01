@@ -209,16 +209,23 @@ func parseRequestBody(c *Client, r *Request) error {
 }
 
 func createHTTPRequest(c *Client, r *Request) (err error) {
-	if r.bodyReadSeeker == nil {
-		if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
-			r.RawRequest, err = http.NewRequest(r.Method, r.URL, reader)
-		} else {
-			r.RawRequest, err = http.NewRequest(r.Method, r.URL, nil)
-		}
-	} else {
-		r.RawRequest, err = http.NewRequest(r.Method, r.URL, r.bodyReadSeeker)
+	// Enable trace
+	if c.trace || r.trace {
+		r.clientTrace = &clientTrace{}
+		r.ctx = r.clientTrace.createContext(r.Context())
 	}
 
+	var reqBody io.Reader
+	if r.bodyReadSeeker == nil {
+		if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
+			reqBody = reader
+		} else {
+			reqBody = nil
+		}
+	} else {
+		reqBody = r.bodyReadSeeker
+	}
+	r.RawRequest, err = http.NewRequestWithContext(r.Context(), r.Method, r.URL, reqBody)
 	if err != nil {
 		return
 	}
@@ -237,17 +244,6 @@ func createHTTPRequest(c *Client, r *Request) (err error) {
 	// Add cookies from request instance into http request
 	for _, cookie := range r.Cookies {
 		r.RawRequest.AddCookie(cookie)
-	}
-
-	// Enable trace
-	if c.trace || r.trace {
-		r.clientTrace = &clientTrace{}
-		r.ctx = r.clientTrace.createContext(r.Context())
-	}
-
-	// Use context if it was specified
-	if r.ctx != nil {
-		r.RawRequest = r.RawRequest.WithContext(r.ctx)
 	}
 
 	return
