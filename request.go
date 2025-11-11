@@ -1178,7 +1178,7 @@ func (r *Request) writeMultipartFields(w *multipart.Writer) error {
 
 	// GitHub #130 adding multipart field support with content type
 	for _, mf := range r.multipartFields {
-		if err := addMultipartFormField(w, mf); err != nil {
+		if err := mf.writeToMultipartWriter(w); err != nil {
 			return err
 		}
 	}

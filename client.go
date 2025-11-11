@@ -1295,8 +1295,7 @@ func (c *Client) execute(req *Request) (*Response, error) {
 			if err != nil {
 				uploadErrChan <- err
 			}
-			_ = mpw.mw.Close()
-			_ = mpw.pw.Close()
+			_ = mpw.Close()
 			close(uploadErrChan)
 		}()
 	} else {
