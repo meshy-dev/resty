@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"os"
@@ -209,49 +208,6 @@ func closeFieldReaders(fields []*MultipartField) {
 	for _, field := range fields {
 		closeq(field.Reader)
 	}
-}
-
-func addMultipartFormField(w *multipart.Writer, mf *MultipartField) error {
-	if len(mf.FilePath) > 0 && mf.Reader == nil {
-		fr, err := os.Open(mf.FilePath)
-		if err != nil {
-			return err
-		}
-		mf.Reader = fr
-	}
-
-	if len(mf.ContentType) > 0 {
-		partWriter, err := w.CreatePart(createMultipartHeader(mf.Param, mf.FileName, mf.ContentType))
-		if err != nil {
-			return err
-		}
-
-		_, err = io.Copy(partWriter, mf.Reader)
-		return err
-	}
-
-	return writeMultipartFormFile(w, mf.Param, mf.FileName, mf.Reader)
-}
-
-func writeMultipartFormFile(w *multipart.Writer, fieldName, fileName string, r io.Reader) error {
-	// Auto detect actual multipart content type
-	cbuf := make([]byte, 512)
-	size, err := r.Read(cbuf)
-	if err != nil && err != io.EOF {
-		return err
-	}
-
-	partWriter, err := w.CreatePart(createMultipartHeader(fieldName, fileName, http.DetectContentType(cbuf[:size])))
-	if err != nil {
-		return err
-	}
-
-	if _, err = partWriter.Write(cbuf[:size]); err != nil {
-		return err
-	}
-
-	_, err = io.Copy(partWriter, r)
-	return err
 }
 
 func getPointer(v interface{}) interface{} {

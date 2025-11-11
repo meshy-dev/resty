@@ -80,13 +80,21 @@ func TestIsXMLType(t *testing.T) {
 func TestWriteMultipartFormFileReaderEmpty(t *testing.T) {
 	w := multipart.NewWriter(bytes.NewBuffer(nil))
 	defer func() { _ = w.Close() }()
-	if err := writeMultipartFormFile(w, "foo", "bar", bytes.NewReader(nil)); err != nil {
+	mf := MultipartField{
+		Param:    "foo",
+		FileName: "bar",
+		Reader:   bytes.NewReader(nil),
+	}
+	if err := mf.writeToMultipartWriter(w); err != nil {
 		t.Errorf("Got unexpected error: %v", err)
 	}
 }
 
 func TestWriteMultipartFormFileReaderError(t *testing.T) {
-	err := writeMultipartFormFile(nil, "", "", &brokenReadCloser{})
+	mf := MultipartField{
+		Reader: &brokenReadCloser{},
+	}
+	err := mf.writeToMultipartWriter(nil)
 	assertNotNil(t, err)
 	assertEqual(t, "read error", err.Error())
 }
