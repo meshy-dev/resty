@@ -1222,6 +1222,12 @@ func (c *Client) Clone() *Client {
 	cc.invalidHooks = slices.Clone(c.invalidHooks)
 	cc.panicHooks = slices.Clone(c.panicHooks)
 
+	// httpClient is a pointer; clone it so that mutations (e.g. SetTimeout)
+	// on the clone do not affect the original or any other client sharing
+	// the same underlying *http.Client.
+	hc := *c.httpClient
+	cc.httpClient = &hc
+
 	return &cc
 }
 
