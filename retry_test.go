@@ -5,13 +5,17 @@
 package resty
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strconv"
 	"strings"
@@ -874,4 +878,192 @@ func TestResetMultipartFieldReaders(t *testing.T) {
 
 	assertEqual(t, 500, resp.StatusCode())
 	assertNil(t, err)
+}
+
+// opaqueSectionable hides the concrete reader type so snapshotReader cannot
+// match it, while still exposing ReaderAt+Seeker — forcing the per-attempt
+// SectionReader path (the same shape as *os.File).
+type opaqueSectionable struct{ *bytes.Reader }
+
+// opaqueReadSeeker exposes only io.ReadSeeker (no ReaderAt): not replayable
+// per attempt, so it must be rejected when retries are enabled.
+type opaqueReadSeeker struct{ io.ReadSeeker }
+
+// opaqueReader is a plain, non-seekable reader: likewise rejected with
+// retries enabled.
+type opaqueReader struct{ io.Reader }
+
+// TestRetryBodyNotCorruptedByInFlightUpload reproduces the shared-body-reader
+// retry race: the server answers 503 before the upload finishes and then keeps
+// draining slowly, so the transport's background body write is still reading
+// when the retry fires (net/http keeps writing the request body after an early
+// response, and with DoNotParseResponse nothing closes the discarded response
+// to tear that connection down). Each attempt must therefore get its own
+// stateless view of the body — a shared seeker cursor truncates and shifts the
+// retried request.
+func TestRetryBodyNotCorruptedByInFlightUpload(t *testing.T) {
+	const payloadSize = 64 << 20
+	payload := make([]byte, payloadSize)
+	for off := 0; off < payloadSize; off += 8 {
+		binary.BigEndian.PutUint64(payload[off:], uint64(off))
+	}
+
+	tests := map[string]struct {
+		body interface{}
+		// The SectionReader path is a type NewRequest cannot size, so it goes
+		// out chunked; http.ReadRequest reports that as ContentLength -1.
+		wantChunked bool
+	}{
+		"bytes body":  {body: payload},
+		"reader body": {body: bytes.NewReader(payload)},
+		"buffer body": {body: bytes.NewBuffer(payload)},
+		"sectionable body": {
+			body:        &opaqueSectionable{bytes.NewReader(payload)},
+			wantChunked: true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			assertNil(t, err)
+			defer ln.Close()
+
+			type uploadResult struct {
+				contentLength int64
+				body          []byte
+				readErr       error
+			}
+			results := make(chan uploadResult, 1)
+			go func() {
+				for connIdx := 1; ; connIdx++ {
+					conn, err := ln.Accept()
+					if err != nil {
+						return
+					}
+					go func(conn net.Conn, connIdx int) {
+						defer conn.Close()
+						_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+						req, err := http.ReadRequest(bufio.NewReader(conn))
+						if err != nil {
+							return
+						}
+						if connIdx == 1 {
+							// Early 503 with a body nobody will read, then drain the
+							// upload slowly to hold the client's background body write
+							// alive across the retry wait.
+							_, _ = io.WriteString(conn, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 5\r\n\r\nbusy!")
+							buf := make([]byte, 32<<10)
+							for {
+								time.Sleep(5 * time.Millisecond)
+								if _, err := req.Body.Read(buf); err != nil {
+									return
+								}
+							}
+						}
+						body, readErr := io.ReadAll(req.Body)
+						_, _ = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+						results <- uploadResult{contentLength: req.ContentLength, body: body, readErr: readErr}
+					}(conn, connIdx)
+				}
+			}()
+
+			c := NewWithClient(&http.Client{}).
+				SetBaseURL("http://" + ln.Addr().String()).
+				SetRetryCount(1).
+				SetRetryWaitTime(100 * time.Millisecond).
+				SetRetryMaxWaitTime(100 * time.Millisecond).
+				SetCloseConnection(true).
+				AddRetryCondition(func(r *Response, err error) bool {
+					return err == nil && r != nil && r.StatusCode() == http.StatusServiceUnavailable
+				})
+
+			resp, err := c.R().SetDoNotParseResponse(true).SetBody(tt.body).Post("/upload")
+			assertNil(t, err)
+			assertNotNil(t, resp)
+			if body := resp.RawBody(); body != nil {
+				_ = body.Close()
+			}
+
+			got := <-results
+			assertNil(t, got.readErr)
+			if tt.wantChunked {
+				assertEqual(t, int64(-1), got.contentLength)
+			} else {
+				assertEqual(t, int64(payloadSize), got.contentLength)
+			}
+			assertEqual(t, payloadSize, len(got.body))
+			if !bytes.Equal(payload, got.body) {
+				for off := 0; off+8 <= len(got.body); off += 8 {
+					if v := binary.BigEndian.Uint64(got.body[off:]); v != uint64(off) {
+						t.Fatalf("retried body corrupted: word at offset %d encodes offset %d (shift %+d)",
+							off, v, int64(v)-int64(off))
+					}
+				}
+				t.Fatal("retried body corrupted")
+			}
+		})
+	}
+}
+
+// TestRetryNonReplayableBodyRejected ensures a body that cannot be replayed
+// per attempt fails fast when retries are enabled, instead of silently
+// corrupting the retried request — and still streams when retries are off.
+func TestRetryNonReplayableBodyRejected(t *testing.T) {
+	svr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer svr.Close()
+
+	bodies := map[string]func() interface{}{
+		"plain reader":       func() interface{} { return &opaqueReader{strings.NewReader("hello")} },
+		"seeker sans readat": func() interface{} { return &opaqueReadSeeker{strings.NewReader("hello")} },
+	}
+
+	for name, makeBody := range bodies {
+		t.Run(name, func(t *testing.T) {
+			retrying := NewWithClient(&http.Client{}).SetRetryCount(1)
+			_, err := retrying.R().SetBody(makeBody()).Post(svr.URL)
+			assertNotNil(t, err)
+			assertEqual(t, true, errors.Is(err, errRetryUnsupportedBody))
+
+			plain := NewWithClient(&http.Client{})
+			resp, err := plain.R().SetBody(makeBody()).Post(svr.URL)
+			assertNil(t, err)
+			assertEqual(t, http.StatusOK, resp.StatusCode())
+		})
+	}
+}
+
+// TestRetryExhaustedResponseBodyReadable ensures only discarded attempts'
+// responses are closed on retry: when retries are exhausted, the final
+// response body must stay open so a DoNotParseResponse caller can still read
+// the error payload.
+func TestRetryExhaustedResponseBodyReadable(t *testing.T) {
+	svr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("busy!"))
+	}))
+	defer svr.Close()
+
+	c := NewWithClient(&http.Client{}).
+		SetRetryCount(2).
+		SetRetryWaitTime(10 * time.Millisecond).
+		SetRetryMaxWaitTime(10 * time.Millisecond).
+		AddRetryCondition(func(r *Response, err error) bool {
+			return err == nil && r != nil && r.StatusCode() == http.StatusServiceUnavailable
+		})
+
+	resp, err := c.R().SetDoNotParseResponse(true).SetBody([]byte("hello")).Post(svr.URL)
+	assertNil(t, err)
+	assertNotNil(t, resp)
+	assertEqual(t, http.StatusServiceUnavailable, resp.StatusCode())
+
+	body := resp.RawBody()
+	assertNotNil(t, body)
+	data, err := io.ReadAll(body)
+	assertNil(t, err)
+	_ = body.Close()
+	assertEqual(t, "busy!", string(data))
 }

@@ -208,6 +208,60 @@ func parseRequestBody(c *Client, r *Request) error {
 	return nil
 }
 
+// snapshotReader returns an independent reader over the same backing data for
+// the reader types resty stores in bodyReadSeeker (and the matching
+// user-supplied bodies): a shallow struct copy gives the new attempt its own
+// cursor with no data copy — the same idiom http.NewRequest uses for GetBody.
+// The copy preserves the current offset, so a mid-stream user reader keeps its
+// position; nothing advances the original's cursor anymore, so the offset is
+// stable across attempts. NewRequest recognizes both concrete types and
+// derives Content-Length and GetBody itself.
+func snapshotReader(body io.Reader) (io.Reader, bool) {
+	switch v := body.(type) {
+	case *bytes.Reader:
+		cp := *v
+		return &cp, true
+	case *strings.Reader:
+		cp := *v
+		return &cp, true
+	case *bytes.Buffer:
+		// Bytes() shares the buffer's backing array; reading the snapshot
+		// does not consume the buffer, so every attempt sees the full body.
+		return bytes.NewReader(v.Bytes()), true
+	}
+	return nil, false
+}
+
+// sectionReaderFor returns a per-attempt independent view of body when it
+// supports stateless reads (io.ReaderAt) and its bounds can be probed
+// (io.Seeker), e.g. *os.File. Section reads go through ReadAt and never move
+// the underlying cursor, so the probed bounds are stable across attempts and
+// the current offset is honored.
+func sectionReaderFor(body io.Reader) (io.Reader, bool) {
+	ra, raOK := body.(io.ReaderAt)
+	seeker, sOK := body.(io.Seeker)
+	if !raOK || !sOK {
+		return nil, false
+	}
+	cur, err := seeker.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, false
+	}
+	end, err := seeker.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, false
+	}
+	if _, err := seeker.Seek(cur, io.SeekStart); err != nil {
+		return nil, false
+	}
+	return io.NewSectionReader(ra, cur, end-cur), true
+}
+
+// errRetryUnsupportedBody rejects, at request-build time, a body that cannot
+// be replayed per attempt: retries would otherwise resend a shared reader the
+// previous attempt may still be consuming, corrupting the retried request.
+var errRetryUnsupportedBody = errors.New("resty: request body type is unsupported with retries enabled: use []byte, string, bytes.Reader/Buffer, strings.Reader, or an io.ReaderAt+io.Seeker, or set retry count to 0")
+
 func createHTTPRequest(c *Client, r *Request) (err error) {
 	// Enable trace
 	if c.trace || r.trace {
@@ -215,15 +269,31 @@ func createHTTPRequest(c *Client, r *Request) (err error) {
 		r.ctx = r.clientTrace.createContext(r.Context())
 	}
 
+	// Give every attempt its own independent view of the body instead of
+	// sharing one seekable cursor: net/http keeps uploading the body in a
+	// background goroutine after an early error response, so on retry the
+	// previous attempt may still be reading from the shared reader, and a
+	// shared cursor corrupts the retried request (truncated/shifted bytes).
 	var reqBody io.Reader
-	if r.bodyReadSeeker == nil {
-		if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
-			reqBody = reader
-		} else {
-			reqBody = nil
-		}
-	} else {
+	if r.bodyReadSeeker != nil {
 		reqBody = r.bodyReadSeeker
+		if snap, ok := snapshotReader(r.bodyReadSeeker); ok {
+			reqBody = snap
+		}
+	} else if reader, ok := r.Body.(io.Reader); ok && isPayloadSupported(r.Method, c.AllowGetMethodPayload) {
+		if snap, ok := snapshotReader(reader); ok {
+			reqBody = snap
+		} else if sec, ok := sectionReaderFor(reader); ok {
+			reqBody = sec
+		} else if c.RetryCount > 0 && r.multipartWriter == nil {
+			// Not replayable per attempt: fail fast instead of corrupting
+			// the retried request. Streaming multipart is exempt — each
+			// attempt gets a fresh pipe (handleMultipart) and field readers
+			// are reset between attempts.
+			return errRetryUnsupportedBody
+		} else {
+			reqBody = reader
+		}
 	}
 	r.RawRequest, err = http.NewRequestWithContext(r.Context(), r.Method, r.URL, reqBody)
 	if err != nil {

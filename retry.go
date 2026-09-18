@@ -126,21 +126,10 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 			return err
 		}
 
+		// Multipart field readers are reset on every retried attempt, before
+		// the hooks: retry hooks rely on reading them from the start (see
+		// TestResetMultipartReaders), including on the final attempt.
 		if resp != nil {
-			if resp.Request.bodyReadSeeker != nil {
-				_, err := resp.Request.bodyReadSeeker.Seek(0, io.SeekStart)
-				if err != nil {
-					return err
-				}
-			}
-
-			if rs, ok := resp.Request.Body.(io.ReadSeeker); ok {
-				_, err := rs.Seek(0, io.SeekStart)
-				if err != nil {
-					return err
-				}
-			}
-
 			if err := resetFieldReaders(resp.Request.multipartFields); err != nil {
 				return err
 			}
@@ -168,6 +157,21 @@ func Backoff(operation func() (*Response, error), options ...Option) error {
 		case <-time.After(waitTime):
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+
+		// The retry is committed past this point; until here every abort path
+		// returns resp with its body untouched for the caller. Bodies need no
+		// rewind — every attempt reads its own snapshot or section view
+		// (non-replayable bodies are rejected when retries are enabled).
+		// Close the discarded
+		// response: nothing else will (e.g. DoNotParseResponse), and unclosed
+		// it keeps the old connection and its possibly still-running upload
+		// alive. No drain here — it can block forever on a stalled body;
+		// since Go 1.27, Close itself drains with hard bounds.
+		if resp != nil {
+			if raw := resp.RawResponse; raw != nil && raw.Body != nil {
+				_ = raw.Body.Close()
+			}
 		}
 	}
 
