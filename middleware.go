@@ -214,14 +214,21 @@ func parseRequestBody(c *Client, r *Request) error {
 // cursor with no data copy — the same idiom http.NewRequest uses for GetBody.
 // The copy preserves the current offset, so a mid-stream user reader keeps its
 // position; nothing advances the original's cursor anymore, so the offset is
-// stable across attempts. NewRequest recognizes both concrete types and
-// derives Content-Length and GetBody itself.
+// stable across attempts. NewRequest recognizes the bytes/strings types and
+// derives Content-Length and GetBody itself; a SectionReader copy is not
+// sized, so it goes out chunked like the sectionReaderFor path.
 func snapshotReader(body io.Reader) (io.Reader, bool) {
 	switch v := body.(type) {
 	case *bytes.Reader:
 		cp := *v
 		return &cp, true
 	case *strings.Reader:
+		cp := *v
+		return &cp, true
+	case *io.SectionReader:
+		// Only the read cursor is mutable; the copy shares the stateless
+		// ReaderAt. Cheaper than sectionReaderFor, which would Seek-probe
+		// the shared body and add a second wrapping layer.
 		cp := *v
 		return &cp, true
 	case *bytes.Buffer:
