@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/go-resty/resty/v2/shellescape"
+	"github.com/meshy-dev/resty/v2/shellescape"
 )
 
 func buildCurlRequest(req *http.Request, httpCookiejar http.CookieJar) (curl string) {
