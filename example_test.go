@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/net/proxy"
 
-	"github.com/go-resty/resty/v2"
+	"github.com/meshy-dev/resty/v2"
 )
 
 type DropboxError struct {

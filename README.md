@@ -104,8 +104,8 @@ Resty author also published following projects for Go Community.
 ## Installation
 
 ```bash
-# Go Modules
-require github.com/go-resty/resty/v2 v2.16.5
+# Go Modules (this fork declares its own module path)
+require github.com/meshy-dev/resty/v2 latest
 ```
 
 ## Usage
@@ -114,7 +114,7 @@ The following samples will assist you to become as comfortable as possible with 
 
 ```go
 // Import resty into your code and refer it as `resty`.
-import "github.com/go-resty/resty/v2"
+import "github.com/meshy-dev/resty/v2"
 ```
 
 #### Simple GET

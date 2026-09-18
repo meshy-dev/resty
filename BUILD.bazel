@@ -1,7 +1,7 @@
 load("@bazel_gazelle//:def.bzl", "gazelle")
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
-# gazelle:prefix github.com/go-resty/resty/v2
+# gazelle:prefix github.com/meshy-dev/resty/v2
 # gazelle:go_naming_convention import_alias
 gazelle(name = "gazelle")
 
@@ -24,7 +24,7 @@ go_library(
         "util.go",
         "util_curl.go",
     ],
-    importpath = "github.com/go-resty/resty/v2",
+    importpath = "github.com/meshy-dev/resty/v2",
     visibility = ["//visibility:public"],
     deps = [
         "//shellescape",

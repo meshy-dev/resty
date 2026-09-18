@@ -1,4 +1,4 @@
-module github.com/go-resty/resty/v2
+module github.com/meshy-dev/resty/v2
 
 go 1.27.0
 
