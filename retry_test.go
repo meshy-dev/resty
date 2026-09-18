@@ -921,6 +921,10 @@ func TestRetryBodyNotCorruptedByInFlightUpload(t *testing.T) {
 			body:        &opaqueSectionable{bytes.NewReader(payload)},
 			wantChunked: true,
 		},
+		"section reader body": {
+			body:        io.NewSectionReader(bytes.NewReader(payload), 0, payloadSize),
+			wantChunked: true,
+		},
 	}
 
 	for name, tt := range tests {
